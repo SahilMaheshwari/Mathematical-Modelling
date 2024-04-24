@@ -1,0 +1,30 @@
+clc, clearvars, close all
+
+% Parameters
+num_agents = 10;       % Number of agents
+num_steps = 10000;     % 1 sec = 10, array runs for 1000 secs = 16 mins
+c = 0.1;
+car_length = 1;
+safety_dist = 0.25;
+reaction_time = 0; 
+
+% Initialize positions and velocities
+positions = zeros(num_agents, num_steps);
+velocities = zeros(num_agents, num_steps);
+
+% Set initial positions
+for i = 1:9
+    positions(i+1,1) = -i*car_length + safety_dist;
+end
+
+%for first car
+for i = 1:num_steps;
+    velocities(1,i) = c;
+end
+
+%runnning the simulation
+for i = 2:num_agents;
+    for j = 1:num_steps;
+        velocities(i,j) = c * (1-((positions(i,j)-car_length-safety_dist)/(positions(i-1,j)-positions(i,j))))^2;
+    end
+end

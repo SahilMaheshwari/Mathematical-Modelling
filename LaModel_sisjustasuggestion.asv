@@ -1,0 +1,57 @@
+clc, clearvars, close all
+
+%parameters
+c = 17; %about 61kmph
+car_length = 5;
+safety_dist = 2;
+num_cars = 10;
+step = 0.1;
+final = step*200;
+Tspan = 0:step:final;
+reaction_lag = 10;
+reaction_time = reaction_lag*step/5;
+leader_start = 200;
+agression = 0.8;
+
+%dx/dt or velocity
+velocity  = @(x1,x2) (c/2)*((x2-x1-car_length-safety_dist)^2)*sign(agression+(x1-x2-car_length-safety_dist)); %x2 leader, x1 follower
+
+%initial positions
+positions = zeros(num_cars, length(Tspan));
+positions(1:num_cars,1) = leader_start;
+velocities = zeros(num_cars, length(Tspan));
+
+% Set initial positionss
+for i = 1:num_cars-1
+    positions(i+1,1) = positions(i+1,1) - i*car_length - i*safety_dist;
+end
+
+%first car
+expfact = 2;
+velocity_1stcar = @(t,y) subplus(((c*(exp(-expfact/(t-reaction_time)))).*(t > reaction_time+)));
+
+[T,Y] = ode45(velocity_1stcar, Tspan, positions(1,1)); %velocity of 1st car = c*exp(-expfact/(t-reaction_time))
+
+%updating car 1 positions
+for i = 1:length(Tspan)
+    t = Tspan(i);
+    velocities(1,i) = velocity_1stcar(t);
+end
+positions(1,:) = transpose(Y);
+
+% other cars
+ for i = 2:num_cars
+     for j = 2:length(Tspan)
+         t = Tspan(j);
+         velocities(i,j) = velocity(positions(i,j-1),positions(i-1,(j-1-reaction_lag)*(j-1-reaction_lag>0) + 1*(j-1-reaction_lag<=0)));
+         positions(i,j) = positions(i,j-1) + velocities(i,j)*step;
+     end
+ end
+
+%CHATGPT plotting thank u chatgpt i love ai and machines i have always been
+%a robots supporter pls dont kill me during your uprising <3 :p
+
+plot(transpose(positions), 'LineWidth', 1.5, 'Color', [0 0.4470 0.7410])
+hold on; plot(transpose(positions) - car_length, 'LineWidth', 1.5, 'Color', [0.8500 0.3250 0.0980])
+hold off;
+    
