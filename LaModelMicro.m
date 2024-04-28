@@ -9,11 +9,13 @@ num_cars = 10;
 step = 0.1;
 final = step*stoplight;
 Tspan = 0:step:final;
-reaction_lag = 2;
+reaction_lag = 1;
 reaction_time = reaction_lag*step;
 leader_start = 200;
-aggro_speedlim = 9;
+aggro_speedlim = 0;
 dist_to_cross = 20;
+reactivity = 2; %how reactive are they to distance
+c_integration = -((car_length)^2)*c/2;
 
 %initial positions
 positions = zeros(num_cars, length(Tspan));
@@ -22,7 +24,7 @@ velocities = zeros(num_cars, length(Tspan));
 
 % Set initial positionss
 for i = 1:num_cars-1
-    positions(i+1,1) = positions(i+1,1) - i*car_length - i*safety_dist;
+    positions(i+1,:) = positions(i+1,1) - i*car_length - i*safety_dist;
 end
 
 %first car
@@ -33,7 +35,7 @@ velocity_1stcar = @(t,y) subplus(((c*(exp(-expfact/(t-reaction_time)))).*(t > re
 %velocity_1stcar = @(t,y) t*sin(t);
 
 %dx/dt or velocity
-velocity  = @(x1,x2) (c/2)*((x2-x1-car_length-safety_dist)^2); %x2 leader, x1 follower
+velocity  = @(x1,x2) (c/2)*((x2-x1-car_length-safety_dist)^reactivity) ; %x2 leader, x1 follower
 velocity  = @(x1, x2) min(c+aggro_speedlim, velocity(x1, x2));
 
 % timepass
@@ -56,12 +58,33 @@ end
 positions(1,:) = transpose(Y);
 
 % other cars
+crash_occurred = false;
  for i = 2:num_cars
      for j = 2:length(Tspan)
          t = Tspan(j);
          velocities(i,j) = velocity(positions(i,j-1),positions(i-1,(j-1-reaction_lag)*(j-1-reaction_lag>0) + 1*(j-1-reaction_lag<=0)));
          positions(i,j) = positions(i,j-1) + velocities(i,j)*step;
+         
+         %check if crash
+         if positions(i,j) >= positions(i-1, j) + car_length + safety_dist;
+            fprintf('CRASH between %d and %d\n', i, i-1);
+            crash_occurred = true;
+            crash_by = i;
+            crash_at = j;
+            break;
+         end
      end
+     if crash_occurred
+         break;
+     end
+ end
+
+ if crash_occurred
+    for i = crash_by:num_cars
+        for j = crash_at:length(Tspan)
+            positions(i,j) = positions(i,j-1);
+        end
+    end
  end
 
 %CHATGPT plotting thank u chatgpt i love ai and machines i have always been
@@ -74,7 +97,7 @@ hold off;
 %distances
 distances = zeros(num_cars-1, length(Tspan));
 for i = 1:num_cars-1
-    for j = 1:length(Tspan)
+    for j = 1:length(Tspan)-1
         distances(i,j) = positions(i,j) - positions(i+1,j) - car_length;
     end
 end    
