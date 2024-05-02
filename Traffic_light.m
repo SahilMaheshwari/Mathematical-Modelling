@@ -7,13 +7,12 @@ dist_to_cross = 0;
 c = 15; %about 61kmph
 car_length = 5;
 safety_dist = 2;
-num_cars = 10;
+num_cars = 20;
 
-function [positions] = greenlight(stoplight)
+function [positions, velocities] = greenlight(stoplight)
     global leader_start dist_to_cross c car_length safety_dist num_cars;
     step = 0.01;
     onesec = 1/step; 
-    stoplight = 10; %12 = 120secs
     final = stoplight*onesec;
     Tspan = 0:step:final;
     reaction_lag = 12*onesec;
@@ -120,15 +119,33 @@ function [positions] = greenlight(stoplight)
 
 end
 
-function [positions] = yellowlight(positions)
+function [positions, velocities] = yellowlight(positions, velocities)
     global leader_start dist_to_cross c car_length safety_dist num_cars;
 
+    %removing all cars post 200m mark length
     rows_to_remove = positions(:, end) > 200;
     positions(rows_to_remove, :) = [];
-
+    velocities(rows_to_remove, :) = [];
     
+    
+    %setting cars who havent travelled past stoplight at col=1
+    for i = 1:size(positions, 1)
+        endval = positions(i,end);
+        positions(i,:) = zeros(1, size(positions, 2));
+        positions(i,1) = endval;
+    end
+
+    %same thing as above but for velocity
+    for i = 1:size(velocities, 1)
+        endval = velocities(i,end);
+        velocities(i,:) = zeros(1, size(velocities, 2));
+        velocities(i,1) = endval;
+    end
+    
+    %velocities
+
 
 end
 
-positions = greenlight(10);
-apple = yellowlight(positions);
+[positions, velocities] = greenlight(10);
+[positions, velocities] = yellowlight(positions, velocities);
