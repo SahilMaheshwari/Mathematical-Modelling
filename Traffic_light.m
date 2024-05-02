@@ -1,9 +1,8 @@
 clc, clearvars, close all
 
-global leader_start aggro_speedlim dist_to_cross c car_length safety_dist num_cars;
+global leader_start dist_to_cross c car_length safety_dist num_cars;
 
 leader_start = 200;
-aggro_speedlim = 9;
 dist_to_cross = 0;
 c = 15; %about 61kmph
 car_length = 5;
@@ -11,7 +10,7 @@ safety_dist = 2;
 num_cars = 10;
 
 function [positions] = greenlight(stoplight)
-    global leader_start aggro_speedlim dist_to_cross c car_length safety_dist num_cars;
+    global leader_start dist_to_cross c car_length safety_dist num_cars;
     step = 0.01;
     onesec = 1/step; 
     stoplight = 10; %12 = 120secs
@@ -39,7 +38,7 @@ function [positions] = greenlight(stoplight)
     
     %dx/dt or velocity
     velocity  = @(x1,x2) ((c/2)*((x2-x1-car_length-safety_dist)^2))*(x2-x1-car_length-safety_dist > 0) ; %x2 leader, x1 follower
-    velocity  = @(x1, x2) min(c+aggro_speedlim, velocity(x1, x2));
+    %velocity  = @(x1, x2) min(c+aggro_speedlim, velocity(x1, x2));
     
     % timepass
     % velocity  = @(x1,x2) (c/2)*(cos(x2/x1)); %x2 leader, x1 follower
@@ -122,7 +121,7 @@ function [positions] = greenlight(stoplight)
 end
 
 function [positions] = yellowlight(positions)
-    global leader_start aggro_speedlim dist_to_cross c car_length safety_dist num_cars;
+    global leader_start dist_to_cross c car_length safety_dist num_cars;
 
     rows_to_remove = positions(:, end) > 200;
     positions(rows_to_remove, :) = [];
