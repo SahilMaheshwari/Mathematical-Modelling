@@ -1,6 +1,6 @@
 clc, clearvars, close all
 
-global leader_start dist_to_cross c car_length safety_dist num_cars;
+global leader_start dist_to_cross c car_length safety_dist num_cars reaction_lag step onesec;
 
 leader_start = 200;
 dist_to_cross = 0;
@@ -8,16 +8,22 @@ c = 15; %about 61kmph
 car_length = 5;
 safety_dist = 2;
 num_cars = 20;
+reaction_lag = 12*onesec;
+step = 0.01;
+onesec = 1/step; 
 
-function [positions, velocities] = greenlight(stoplight)
-    global leader_start dist_to_cross c car_length safety_dist num_cars;
-    step = 0.01;
-    onesec = 1/step; 
-    final = stoplight*onesec;
+
+[positions, velocities] = initializer();
+[positions, velocities] = greenlight(positions, velocities, 10);
+[positions, velocities] = yellowlight(positions, velocities, 10, 2);
+
+
+
+function [positions, velocities] = initializer()
+    global leader_start car_length safety_dist num_cars onesec step;
+    final = 10*onesec;
     Tspan = 0:step:final;
-    reaction_lag = 12*onesec;
 
-    
     %initial positions
     positions = zeros(num_cars, length(Tspan));
     positions(1:num_cars,1) = leader_start;
@@ -27,7 +33,13 @@ function [positions, velocities] = greenlight(stoplight)
     for i = 1:num_cars-1
         positions(i+1,:) = positions(i+1,1) - i*car_length - i*safety_dist;
     end
-    
+end
+
+function [positions, velocities] = greenlight(positions, velocities, stoplight)
+    global leader_start dist_to_cross c car_length safety_dist num_cars reaction_lag step onesec;
+    final = stoplight*onesec;
+    Tspan = 0:step:final;
+
     %first car
     expfact = 20;
     velocity_1stcar = @(t,y) ((c/2)*(exp(-expfact/((t*onesec)-(onesec/6)))))*(exp(-expfact/((t*onesec)-(onesec/6))) > 0)*((t*onesec) > onesec/6);
@@ -120,12 +132,9 @@ function [positions, velocities] = greenlight(stoplight)
 end
 
 function [positions, velocities] = yellowlight(positions, velocities, stoplight, carrate)
-    global leader_start dist_to_cross c car_length safety_dist;
-    step = 0.01;
-    onesec = 1/step; 
+    global c car_length safety_dist reaction_lag step onesec; 
     final = stoplight*onesec;
-    Tspan = 0:step:final;
-    reaction_lag = 12*onesec;    
+    Tspan = 0:step:final;  
 
     %removing all cars post 200m mark length
     rows_to_remove = positions(:, end) > 200;
@@ -137,7 +146,6 @@ function [positions, velocities] = yellowlight(positions, velocities, stoplight,
     positions = padarray(positions, [num_cars, 0], 0, 'post');
     velocities = padarray(velocities, [num_cars, 0], 0, 'post');
     num_cars = size(positions,1);
-    
     
     %setting cars who havent travelled past stoplight at col=1
     for i = 1:size(positions, 1)
@@ -153,46 +161,47 @@ function [positions, velocities] = yellowlight(positions, velocities, stoplight,
         velocities(i,1) = endval;
     end
     
-    %velocity and position 1st car
-    dvdt = @(t,y) [y(2); log(200-y(1))];
-    [T,Y] = ode45(dvdt, Tspan/onesec, [positions(1,1), velocities(1,1)]);
-    Y = real(Y);
+    function [newtopcar] = topcar (car_num)
+        newtopcar = false;
+        %velocity and position top car
+        dvdt = @(t,y) [y(2); log(200-y(1))];
+        [T,Y] = ode45(dvdt, Tspan/onesec, [positions(car_num,1), velocities(car_num,1)]);
+        Y = real(Y);
+    
+        positions(car_num,:) = transpose(Y(:,1));
+        velocities(car_num,:) = transpose(Y(:,2));
+    
+        %has the car passed the finish line?
+        carpassed = false;
+        for i = 1:length(Tspan)
+            if positions(car_num,i) > 200
+                carpassed = true;
+            end
+        end
+    
+        if carpassed
+            newtopcar = true;
+        end
+    end
 
-    positions(1,:) = transpose(Y(:,1));
-    velocities(1,:) = transpose(Y(:,2));
-
-    %has the car passed the finish line?
-    for i = 1:length(Tspan)
-        if Y(i,1) > 200
-            ass = 'AY CARUMBA';
+    first_car_pass = topcar(1);
+    for i = 2:num_cars
+        if first_car_pass
+            first_car_pass = topcar(i);
+        else
+            car_not_pass = i;
+            break
         end
     end
 
     %other cars follow suit
     velocity  = @(x1,x2) ((c/2)*((x2-x1-car_length-safety_dist)^2))*(x2-x1-car_length-safety_dist > 0);
 
-     crash_occurred = false;
-     for i = 2:num_cars
+     for i = car_not_pass:num_cars
          for j = 2:length(Tspan)
              velocities(i,j) = velocity(positions(i,j-1),positions(i-1,((max((floor(j-1-reaction_lag))*(j-1-reaction_lag>0),1) + 1*(j-1-reaction_lag<=0)))));
              positions(i,j) = positions(i,j-1) + (velocities(i,j)*step*step);
              
-             %check if crash
-             if positions(i,j) >= positions(i-1, j) + car_length 
-                fprintf('CRASH between %d and %d\n', i, i-1);
-                crash_occurred = true;
-                crash_by = i;
-                crash_at = j;
-                break;
-             end
-         end
-         if crash_occurred
-             break;
          end
      end
-
-    
 end
-
-[positions, velocities] = greenlight(10);
-[positions, velocities] = yellowlight(positions, velocities, 10, 0);
