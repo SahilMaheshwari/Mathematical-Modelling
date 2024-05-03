@@ -7,7 +7,7 @@ dist_to_cross = 0;
 c = 15; %about 61kmph
 car_length = 5;
 safety_dist = 2;
-num_cars = 20;
+num_cars = 10;
 reaction_lag = 12*onesec;
 step = 0.01;
 onesec = 1/step; 
@@ -15,7 +15,7 @@ onesec = 1/step;
 
 [positions, velocities] = initializer();
 [positions, velocities] = greenlight(positions, velocities, 10);
-[positions, velocities] = yellowlight(positions, velocities, 10, 1);
+[positions, velocities] = yellowlight(positions, velocities, 10, 1.5);
 
 function [positions, velocities] = initializer()
     global leader_start car_length safety_dist num_cars onesec step;
@@ -42,22 +42,9 @@ function [positions, velocities] = greenlight(positions, velocities, stoplight)
     expfact = 20;
     velocity_1stcar = @(t,y) ((c/2)*(exp(-expfact/((t*onesec)-(onesec/6)))))*(exp(-expfact/((t*onesec)-(onesec/6))) > 0)*((t*onesec) > onesec/6);
     
-    %timepass
-    %velocity_1stcar = @(t,y) t;
-    
     %dx/dt or velocity
     velocity  = @(x1,x2) ((c/2)*((x2-x1-car_length-safety_dist)^2))*(x2-x1-car_length-safety_dist > 0) ; %x2 leader, x1 follower
     %velocity  = @(x1, x2) min(c+aggro_speedlim, velocity(x1, x2));
-    
-    % timepass
-    % velocity  = @(x1,x2) (c/2)*(cos(x2/x1)); %x2 leader, x1 follower
-    % velocity  = @(x1, x2) min(c+aggro_speedlim, velocity(x1, x2));
-    
-    %CONSENSUS
-    % velocity  = @(x1,x2) (c/2)*real(log(((x2-x1-car_length-safety_dist)))); %x2 leader, x1 follower
-    % velocity  = @(x1, x2) max(0, velocity(x1, x2));
-    % velocity  = @(x1, x2) min(c+aggro_speedlim, velocity(x1, x2));
-    
     
     [T,Y] = ode45(velocity_1stcar, Tspan/onesec, positions(1,1)); %velocity of 1st car = c*exp(-expfact/(t-reaction_lag))
     
@@ -65,7 +52,6 @@ function [positions, velocities] = greenlight(positions, velocities, stoplight)
     for i = 2:length(Tspan)
         t = Tspan(i)/onesec;
         velocities(1,i) = velocity_1stcar(t);
-        %positions(1,i) = positions(1,i-1) + velocities(1,i)*step;   ummm???
     end
     positions(1,:) = transpose(Y);
     
@@ -98,9 +84,7 @@ function [positions, velocities] = greenlight(positions, velocities, stoplight)
         end
      end
     
-    %CHATGPT plotting thank u chatgpt i love ai and machines i have always been
-    %a robots supporter pls dont kill me during your uprising <3 :p
-    
+    %plotting    
     plot(transpose(positions), 'LineWidth', 1.5, 'Color', 'black')
     hold on; plot(transpose(positions) - car_length, 'LineWidth', 1.5, 'Color', 'red')
     hold off;
@@ -132,7 +116,8 @@ end
 function [positions, velocities] = yellowlight(positions, velocities, stoplight, carrate)
     global c car_length safety_dist reaction_lag step onesec; 
     final = stoplight*onesec;
-    Tspan = 0:step:final;  
+    Tspan = 0:step:final;
+    aggrospeed = 5.0;
 
     %removing all cars post 200m mark length
     rows_to_remove = positions(:, end) > 200;
@@ -142,7 +127,7 @@ function [positions, velocities] = yellowlight(positions, velocities, stoplight,
     %new number of cars
     num_cars = floor(carrate*stoplight/2);
     positions = padarray(positions, [num_cars, 0], 0, 'post');
-    velocities = padarray(velocities, [num_cars, 0], 0, 'post');
+    velocities = padarray(velocities, [num_cars, 0], 0.5, 'post');
     old_cars = size(positions,1) - num_cars;
     num_cars = size(positions,1);
 
@@ -155,7 +140,7 @@ function [positions, velocities] = yellowlight(positions, velocities, stoplight,
 
     %positioning of new cars
     for i = old_cars+1:num_cars
-        positions(i,1) = positions(i-1,1) - car_length - safety_dist;
+        positions(i,1) = positions(i-1,1) - car_length - 4*safety_dist;
     end
 
     %same thing as above but for velocity
@@ -167,42 +152,67 @@ function [positions, velocities] = yellowlight(positions, velocities, stoplight,
     
     function [newtopcar] = topcar (car_num)
         newtopcar = false;
+        fastatstart = true;
+        carpassed = true;
+
         %velocity and position top car
-        dvdt = @(t,y) [y(2); log(200-y(1))-2];
+        dvdt = @(t,y) [y(2); 0.03+log(200-1*y(1))-2];
         [T,Y] = ode45(dvdt, Tspan/onesec, [positions(car_num,1), velocities(car_num,1)]);
         Y = real(Y);
     
         positions(car_num,:) = transpose(Y(:,1));
         velocities(car_num,:) = transpose(Y(:,2));
-    
-        %has the car passed the finish line?
-        carpassed = false;
-        for i = 1:length(Tspan)
-            if positions(car_num,i) > 200
-                carpassed = true;
+
+        for i = 1:length(positions)
+            if positions(car_num,i) >= 200
+                if velocities(car_num,i) < aggrospeed
+                    fastatstart = false;
+                    carpassed = false;
+                    break
+                end
+                break
             end
         end
-    
         if carpassed
             newtopcar = true;
         end
     end
 
+    %making copies
+    positions_copy  = positions;
+    velocities_copy = velocities;
+
     first_car_pass = topcar(1);
     car_not_pass = 2;
-    % for i = 2:num_cars
-    %     if first_car_pass
-    %         first_car_pass = topcar(i);
-    %     else
-    %         car_not_pass = i;
-    %         break
-    %     end
-    % end
+    for i = 2:num_cars
+        if first_car_pass
+            first_car_pass = topcar(i);
+            car_not_pass = i+1;
+        else
+            car_not_pass = i;
+            break
+        end
+    end
 
-    %other cars follow suit
-    velocity  = @(x1,x2) ((c/2)*((x2-x1-car_length-safety_dist)^2))*(sign(x2-x1-car_length-safety_dist));
-    if car_not_pass
-         for i = car_not_pass:num_cars
+    if car_not_pass <= num_cars
+        car_not_pass
+
+    %for the first car to not pass
+    positions(car_not_pass,:) = positions_copy (car_not_pass,:);
+    velocities(car_not_pass,:) = velocities_copy(car_not_pass,:);
+    
+    %to critically dampen
+    c = 2;
+    b = 2 * sqrt(c);
+
+    dvdt = @(t,y) [y(2); 200-b*y(2)-c*y(1)];
+    [T,Y] = ode45(dvdt, Tspan/onesec, [positions(car_not_pass,1), velocities(car_not_pass,1)]);
+    positions(car_not_pass,:) = real(transpose(Y(:,1)));
+    velocities(car_not_pass,:) = real(transpose(Y(:,2)));
+    
+        %other cars follow suit
+        velocity  = @(x1,x2) ((c/2)*((x2-x1-car_length-safety_dist)^2))*(x2-x1-car_length-safety_dist > 0);
+         for i = car_not_pass+1:num_cars
              for j = 2:length(Tspan)
                  velocities(i,j) = velocity(positions(i,j-1),positions(i-1,((max((floor(j-1-reaction_lag))*(j-1-reaction_lag>0),1) + 1*(j-1-reaction_lag<=0)))));
                  positions(i,j) = positions(i,j-1) + (velocities(i,j)*step*step);
